@@ -41,8 +41,9 @@ there.
 
 The library uses c++17 and requires `Boost <https://www.boost.org/>`_ :math:`\geq` 1.71.0,
 `CMake <https://www.cmake.org/>`_ :math:`\geq` 3.15,
-Python :math:`\geq` 3.8, `NumPy <http://numpy.org>`_ :math:`\geq` 1.15.0, `Cython <https://www.cython.org/>`_
-:math:`\geq` 0.27 and `pybind11 <https://github.com/pybind/pybind11>`_ to compile the GUDHI Python module.
+Python :math:`\geq` 3.10, `NumPy <http://numpy.org>`_ :math:`\geq` 1.21.6,
+`scikit-build-core <https://scikit-build-core.readthedocs.io>`_ :math:`\geq` 0.4.3
+`nanobind <https://nanobind.readthedocs.io>`_ :math:`\geq` 1.3.2 to compile the GUDHI Python module.
 It is a multi-platform library and compiles on Linux, Mac OSX and Visual Studio 2017 or later.
 
 If you have several Python/python installed, you can force it by adding
@@ -51,8 +52,8 @@ If you have several Python/python installed, you can force it by adding
 GUDHI Python module compilation
 ===============================
 
-After making sure that the `Compilation dependencies`_ are properly installed,
-one can build the GUDHI Python module, by running the following commands in a terminal:
+After making sure that the `Compilation dependencies`_ are properly installed, one can build the GUDHI Python module,
+by running the following commands in a terminal:
 
 .. code-block:: bash
 
@@ -60,22 +61,12 @@ one can build the GUDHI Python module, by running the following commands in a te
     mkdir build
     cd build/
     cmake -DCMAKE_BUILD_TYPE=Release ..
-    cd python
+    cd python # Change directory to avoid to compile C++ stuff
+    # Unnecessary C++ compilation can also be avoided with the following cmake command:
+    # cmake -DCMAKE_BUILD_TYPE=Release -DWITH_GUDHI_GUDHUI=OFF -DWITH_GUDHI_TEST=OFF -DWITH_GUDHI_UTILITIES=OFF ..
     make
 
-.. note::
-
-    :code:`make python` (or :code:`make` in python directory) is only a
-    `CMake custom targets <https://cmake.org/cmake/help/latest/command/add_custom_target.html>`_
-    to shortcut :code:`python setup.py build_ext --inplace` command.
-    No specific other options  (:code:`-j8` for parallel, or even :code:`make clean`, ...) are
-    available.
-    But one can use :code:`python setup.py ...` specific options in the python directory:
-
-.. code-block:: bash
-
-    python setup.py clean --all               # Clean former compilation
-    python setup.py build_ext -j 8 --inplace  # Build in parallel
+.. seealso:: In `GUDHI Python module installation`_ section, the `pip install` part also compiles the Python module before installing it.
 
 GUDHI Python module installation
 ================================
@@ -88,19 +79,18 @@ PYTHONPATH:
     # For windows, you have to set PYTHONPATH environment variable
     export PYTHONPATH='$PYTHONPATH:/path-to-gudhi/build/python'
 
-Or install it definitely in your Python packages folder:
+Or install GUDHI in your Python packages folder with the
+`scikit-build-core editable mode <https://scikit-build-core.readthedocs.io/en/latest/configuration/index.html#editable-installs>`_:
 
 .. code-block:: bash
 
-    cd /path-to-gudhi/build/python
-    python setup.py install # add --user to the command if you do not have the permission
-    # Or 'pip install .'
+    cd /path-to-gudhi/
+    pip install --no-build-isolation --config-settings=editable.rebuild=true -Cbuild-dir=build -ve.
+    # Note that this command will also recompile the C++ binded modules, when modified, required by the Python project
 
 .. note::
 
     It does not take into account :code:`CMAKE_INSTALL_PREFIX`.
-    But one can use
-    `alternate location installation <https://docs.python.org/3/install/#alternate-installation>`_.
 
 Test suites
 ===========
@@ -138,67 +128,66 @@ If :code:`import gudhi` succeeds, please have a look to debug information:
 
     import gudhi as gd
     print(gd.__debug_info__)
-    print("+ Installed modules are: " + gd.__available_modules)
-    print("+ Missing modules are: " + gd.__missing_modules)
+    print("+ Installed modules are:", "; ".join(gd.__all__))
 
 You shall have something like:
 
 .. code-block:: none
 
-    Pybind11 version 2.8.1
-    Python version 3.7.12
-    Cython version 0.29.25
-    Numpy version 1.21.4
-    Boost version 1.77.0
-    + Installed modules are: off_utils;simplex_tree;rips_complex;cubical_complex;periodic_cubical_complex;
-        persistence_graphical_tools;reader_utils;witness_complex;strong_witness_complex;
-    + Missing modules are: bottleneck;nerve_gic;subsampling;tangential_complex;alpha_complex;euclidean_witness_complex;
-        euclidean_strong_witness_complex;
+    Python version 3.11.14
+    Nanobind version 2.9.2
+    Numpy version 2.3.3
+    Boost version 1.83.0
+    + Installed modules are: CubicalComplex; PeriodicCubicalComplex; SimplexTree; RipsComplex; WitnessComplex;
+    StrongWitnessComplex; CoverComplex; read_lower_triangular_matrix_from_csv_file;
+    read_persistence_intervals_grouped_by_dimension; read_persistence_intervals_in_dimension;
+    read_points_from_off_file; write_points_to_off_file; plot_persistence_barcode; plot_persistence_diagram;
+    plot_persistence_density
 
 Here, you can see that the modules that need CGAL are missing, because CGAL is not installed.
-:code:`persistence_graphical_tools` is installed, but
-`its functions <https://gudhi.inria.fr/python/latest/persistence_graphical_tools_ref.html>`_ will produce an error as
-matplotlib is not available.
+`plot_persistence_* functions <https://gudhi.inria.fr/python/latest/persistence_graphical_tools_ref.html>`_
+will produce an error as matplotlib is not available.
 Unitary tests cannot be run as pytest is missing.
 
 A complete configuration would be :
 
 .. code-block:: none
 
-    Python version 3.11.9
-    Pybind11 version 2.12.0
-    Cython version 3.0.10
-    Numpy version 1.24.3
-    Pytest version 8.2.1
-    Matplotlib version 3.9.0
-    Scipy version 1.13.1
-    Scikit-learn version 1.3.2
-    POT version 0.9.4
+    Python version 3.10.0
+    Nanobind version 2.6.1
+    Numpy version 2.1.3
+    Pytest version 8.3.5
+    Matplotlib version 3.10.1
+    Scipy version 1.15.2
+    Scikit-learn version 1.6.1
+    POT version 0.9.6.post1
     HNSWlib version 0.8.0
-    PyTorch version 2.3.0
+    PyTorch version 2.6.0
     PyKeOps version 2.2.3
     EagerPy version 0.30.0
-    TensorFlow version 2.13.1
-    Sphinx version 7.3.7
+    TensorFlow version 2.19.0
+    Sphinx version 8.1.3
     Sphinx-paramlinks version 0.6.0
-    pydata_sphinx_theme version 0.15.2
-    sphinxcontrib-bibtex version 2.6.2
-    sphinx-autodoc-typehints version 2.4.4
-    NetworkX version 3.3
+    pydata_sphinx_theme version 0.16.1
+    sphinxcontrib-bibtex version 2.6.3
+    sphinx-autodoc-typehints version 3.0.1
+    NetworkX version 3.4.2
     Eigen3 version 3.4.0
     Boost version 1.84.0
-    CGAL header only version 5.6.1
+    CGAL version 5.6.1
     GMP_LIBRARIES = /usr/lib/x86_64-linux-gnu/libgmp.so
     GMPXX_LIBRARIES = /usr/lib/x86_64-linux-gnu/libgmpxx.so
     MPFR_LIBRARIES = /usr/lib/x86_64-linux-gnu/libmpfr.so
     TBB version 2021.7.0 found and used
-    TBB_LIBRARY = /usr/lib/x86_64-linux-gnu/libtbb.so
-    TBB_MALLOC_LIBRARY = /usr/lib/x86_64-linux-gnu/libtbbmalloc.so
-    + Installed modules are: bottleneck;off_utils;simplex_tree;rips_complex;cubical_complex;periodic_cubical_complex;
-        persistence_graphical_tools;reader_utils;witness_complex;strong_witness_complex;nerve_gic;subsampling;
-        tangential_complex;alpha_complex;euclidean_witness_complex;euclidean_strong_witness_complex;
-    + Missing modules are:
-
+    TBB_LIBRARY = /usr/lib/x86_64-linux-gnu/libtbb.so.12.7
+    TBB_MALLOC_LIBRARY = /usr/lib/x86_64-linux-gnu/libtbbmalloc.so.2.7
+    + Installed modules are: CubicalComplex; PeriodicCubicalComplex; SimplexTree; RipsComplex; WitnessComplex;
+    StrongWitnessComplex; CoverComplex; read_lower_triangular_matrix_from_csv_file;
+    read_persistence_intervals_grouped_by_dimension; read_persistence_intervals_in_dimension;
+    read_points_from_off_file; write_points_to_off_file; plot_persistence_barcode; plot_persistence_diagram;
+    plot_persistence_density; bottleneck_distance; DelaunayComplex; AlphaComplex; DelaunayCechComplex;
+    EuclideanStrongWitnessComplex; EuclideanWitnessComplex; TangentialComplex; choose_n_farthest_points;
+    pick_n_random_points; sparsify_point_set
 
 Documentation
 =============
@@ -411,8 +400,9 @@ requested.
 SciPy
 -----
 
-The :doc:`persistence graphical tools </persistence_graphical_tools_user>` and
-:doc:`Wasserstein distance </wasserstein_distance_user>` modules require `SciPy
+The :doc:`persistence graphical tools </persistence_graphical_tools_user>`,
+`Wasserstein distance (POT version) <wasserstein_distance_user.html#optimal-transport>`_ and
+`Wasserstein barycenters <wasserstein_distance_user.html#barycenters>`_ modules require `SciPy
 <http://scipy.org>`_, a Python-based ecosystem of open-source software for
 mathematics, science, and engineering.
 

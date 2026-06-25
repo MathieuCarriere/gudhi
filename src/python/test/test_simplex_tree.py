@@ -11,13 +11,13 @@
 
 import numpy as np
 import pytest
+import warnings
 
 from gudhi import SimplexTree
 
 
 def test_insertion():
     st = SimplexTree()
-    assert st._is_defined() == True
     assert st._is_persistence_defined() == False
     assert st.is_empty()
 
@@ -117,7 +117,6 @@ def test_insertion():
 
 def test_expansion():
     st = SimplexTree()
-    assert st._is_defined() == True
     assert st._is_persistence_defined() == False
 
     # insert test
@@ -187,7 +186,6 @@ def test_expansion():
 
 def test_automatic_dimension():
     st = SimplexTree()
-    assert st._is_defined() == True
     assert st._is_persistence_defined() == False
 
     # insert test
@@ -215,7 +213,6 @@ def test_automatic_dimension():
 
 def test_make_filtration_non_decreasing():
     st = SimplexTree()
-    assert st._is_defined() == True
     assert st._is_persistence_defined() == False
 
     # Inserted simplex:
@@ -375,6 +372,19 @@ def test_collapse_edges():
     for simplex in st.get_skeleton(0):
         assert simplex[1] == 1.0
 
+def test_collapse_edges_warning():
+    st = SimplexTree()
+
+    assert st.insert([0, 1, 2], filtration=1.0) == True
+    assert st.insert([2, 3, 4], filtration=2.0) == True
+    assert st.dimension() == 2
+
+    with warnings.catch_warnings(record=True) as w:
+        st.collapse_edges()
+        assert len(w) == 1
+        assert issubclass(w[0].category, RuntimeWarning)
+        assert "collapse_edges()" in str(w[0].message)
+        assert st.dimension() == 1
 
 def test_reset_filtration():
     st = SimplexTree()
@@ -619,6 +629,38 @@ def test_insert_batch():
     ]
 
 
+def test_insert_batch_transposed():
+    st = SimplexTree()
+    # vertices
+    s = np.array([[6], [1], [5]])
+    st.insert_batch(s.transpose(), np.array([-5.0, 2.0, -3.0]))
+    # triangles
+    s = np.array([[2, 5, 6], [10, 0, 11]])
+    st.insert_batch(s.transpose(), np.array([4.0, 0.0]))
+    # edges
+    s = np.array([[1, 2], [5, 5]])
+    st.insert_batch(s.transpose(), np.array([1.0, 3.0]))
+
+    assert list(st.get_filtration()) == [
+        ([6], -5.0),
+        ([5], -3.0),
+        ([0], 0.0),
+        ([10], 0.0),
+        ([0, 10], 0.0),
+        ([11], 0.0),
+        ([0, 11], 0.0),
+        ([10, 11], 0.0),
+        ([0, 10, 11], 0.0),
+        ([1], 1.0),
+        ([2], 1.0),
+        ([1, 2], 1.0),
+        ([2, 5], 4.0),
+        ([2, 6], 4.0),
+        ([5, 6], 4.0),
+        ([2, 5, 6], 4.0),
+    ]
+
+
 def test_expansion_with_blocker():
     st = SimplexTree()
     st.insert([0, 1], 0)
@@ -709,3 +751,18 @@ def test_prune_above_dimension():
     assert st.num_simplices() == 0
 
     assert st.prune_above_dimension(-200) == False
+
+
+def test_euler_characteristic():
+    st = SimplexTree()
+    st.insert([0, 1, 2])
+    st.insert([0, 3])
+    st.insert([3, 4, 5])
+    st.insert([0, 1, 6, 7])
+    st.insert([2, 5])
+    
+    dims = st.num_simplices_by_dimension()
+    assert dims.shape[0] == 4
+    assert np.array_equal(dims, [8, 13, 6, 1])
+
+    assert st.euler_characteristic() == 0

@@ -9,14 +9,12 @@
       - YYYY/MM Author: Description of the modification
 """
 
-
 from gudhi import TangentialComplex, SimplexTree
 
 
 def test_tangential():
     point_list = [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]]
-    tc = TangentialComplex(intrisic_dim=1, points=point_list)
-    assert tc._is_defined() == True
+    tc = TangentialComplex(intrinsic_dim=1, points=point_list)
     assert tc.num_vertices() == 4
     assert tc.num_simplices() == 0
     assert tc.num_inconsistent_simplices() == 0
@@ -29,7 +27,6 @@ def test_tangential():
     assert tc.num_inconsistent_stars() == 0
 
     st = tc.create_simplex_tree()
-    assert st._is_defined() == True
     assert st._is_persistence_defined() == False
 
     assert st.num_simplices() == 6
@@ -53,12 +50,13 @@ def test_tangential():
     assert tc.get_point(4) == []
     assert tc.get_point(125) == []
 
+
 def test_tensors():
     try:
         import torch
 
         point_list = (torch.rand((5, 2))).requires_grad_()
-        cplex = TangentialComplex(intrisic_dim=1, points=point_list)
+        cplex = TangentialComplex(intrinsic_dim=1, points=point_list)
     except ImportError:
         pass
 
@@ -66,6 +64,6 @@ def test_tensors():
         import tensorflow as tf
 
         point_list = tf.random.uniform(shape=[5, 2])
-        cplex = TangentialComplex(intrisic_dim=1, points=point_list)
+        cplex = TangentialComplex(intrinsic_dim=1, points=point_list)
     except ImportError:
         pass

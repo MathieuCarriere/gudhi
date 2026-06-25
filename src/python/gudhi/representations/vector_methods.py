@@ -2,16 +2,13 @@
 # See file LICENSE or go to https://gudhi.inria.fr/licensing/ for full license details.
 # Author(s):       Mathieu Carrière, Martin Royer, Gard Spreemann
 #
-# Copyright (C) 2018-2020 Inria
+# Copyright (C) 2018 Inria
 #
 # Modification(s):
 #   - 2020/06 Martin: ATOL integration
 #   - 2020/12 Gard: A more flexible Betti curve class capable of computing exact curves.
 #   - 2021/11 Vincent Rouvreau: factorize _automatic_sample_range
 
-__author__ = "Mathieu Carrière, Martin Royer, Gard Spreemann"
-__maintainer__ = "Martin Royer, Gard Spreemann, Vincent Rouvreau"
-__copyright__ = "Copyright (C) 2018-2020 Inria"
 __license__ = "MIT"
 
 
@@ -725,7 +722,11 @@ class TopologicalVector(BaseEstimator, TransformerMixin):
                 distances = DistanceMetric.get_metric("chebyshev").pairwise(diagram)
             except ValueError:
                 # Empty persistence diagram case - https://github.com/GUDHI/gudhi-devel/issues/507
-                assert len(diagram) == 0
+                if len(diagram) != 0:
+                    raise RuntimeError(
+                        "DistanceMetric.get_metric('chebyshev').pairwise(diagram) raised a ValueError"
+                        " even though the input diagram is not empty"
+                    )
                 distances = np.empty(shape=[0, 0])
             vect = np.flip(np.sort(np.triu(np.minimum(distances, min_pers)), axis=None), 0)
             dim = min(len(vect), thresh)
@@ -1022,7 +1023,7 @@ class Atol(BaseEstimator, TransformerMixin):
         Apply measure vectorisation on a list of measures.
 
         Parameters:
-            X (list N x d numpy arrays): input measures in R^d from which to learn center locations and inertias
+            X (list N x d numpy arrays): input measures in R^d to be vectorized,
                 (measures can have different N).
             sample_weight (list of numpy arrays): weights for each measure point in X, optional.
                 If None, the object's weighting_method will be used.

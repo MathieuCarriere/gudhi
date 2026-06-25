@@ -2,15 +2,12 @@
 # See file LICENSE or go to https://gudhi.inria.fr/licensing/ for full license details.
 # Author(s):       Mathieu Carrière, Vincent Rouvreau
 #
-# Copyright (C) 2018-2019 Inria
+# Copyright (C) 2018 Inria
 #
 # Modification(s):
 #   - 2021/10 Vincent Rouvreau: Add DimensionSelector
 #   - YYYY/MM Author: Description of the modification
 
-__author__ = "Mathieu Carrière, Vincent Rouvreau"
-__maintainer__ = "Vincent Rouvreau"
-__copyright__ = "Copyright (C) 2018-2019 Inria"
 __license__ = "MIT"
 
 

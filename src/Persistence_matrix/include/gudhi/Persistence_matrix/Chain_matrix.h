@@ -2,7 +2,7 @@
  *    See file LICENSE or go to https://gudhi.inria.fr/licensing/ for full license details.
  *    Author(s):       Hannah Schreiber
  *
- *    Copyright (C) 2022-24 Inria
+ *    Copyright (C) 2022 Inria
  *
  *    Modification(s):
  *      - YYYY/MM Author: Description of the modification
@@ -17,7 +17,7 @@
 #ifndef PM_CHAIN_MATRIX_H
 #define PM_CHAIN_MATRIX_H
 
-#include <iostream>   //print() only
+#include <iostream>  //print() only
 #include <set>
 #include <map>
 #include <stdexcept>
@@ -25,7 +25,9 @@
 #include <utility>    //std::swap, std::move & std::exchange
 #include <algorithm>  //std::sort
 
-#include <gudhi/Persistence_matrix/Id_to_index_overlay.h> //friend
+#include <gudhi/Persistence_matrix/Position_to_index_overlay.h>  //friend
+#include <gudhi/Persistence_matrix/Id_to_index_overlay.h>        //friend
+#include <gudhi/Persistence_matrix/index_mapper.h>
 
 namespace Gudhi {
 namespace persistence_matrix {
@@ -46,27 +48,49 @@ class Chain_matrix : public Master_matrix::Matrix_dimension_option,
                      public Master_matrix::Chain_pairing_option,
                      public Master_matrix::Chain_vine_swap_option,
                      public Master_matrix::Chain_representative_cycles_option,
-                     public Master_matrix::Matrix_row_access_option
+                     public Master_matrix::Matrix_row_access_option,
+                     protected std::conditional_t<
+                         Master_matrix::Option_list::has_vine_update &&
+                             (Master_matrix::Option_list::has_column_pairings ||
+                              Master_matrix::Option_list::can_retrieve_representative_cycles),
+                         Index_mapper<typename Master_matrix::template Dictionary<typename Master_matrix::Pos_index>>,
+                         Dummy_index_mapper>
 {
+ private:
+  using Dim_opt = typename Master_matrix::Matrix_dimension_option;
+  using Pair_opt = typename Master_matrix::Chain_pairing_option;
+  using Swap_opt = typename Master_matrix::Chain_vine_swap_option;
+  using Rep_opt = typename Master_matrix::Chain_representative_cycles_option;
+  using RA_opt = typename Master_matrix::Matrix_row_access_option;
+
+  static constexpr bool hasPivotToPosMap_ =
+      Master_matrix::Option_list::has_vine_update && (Master_matrix::Option_list::has_column_pairings ||
+                                                      Master_matrix::Option_list::can_retrieve_representative_cycles);
+
+  using Pivot_to_pos_mapper_opt =
+      std::conditional_t<hasPivotToPosMap_,
+                         Index_mapper<typename Master_matrix::template Dictionary<typename Master_matrix::Pos_index>>,
+                         Dummy_index_mapper>;
+
  public:
   /**
    * @brief Field operators class. Necessary only if @ref PersistenceMatrixOptions::is_z2 is false.
    */
   using Field_operators = typename Master_matrix::Field_operators;
-  using Field_element = typename Master_matrix::Element;                    /**< Type of an field element. */
-  using Column = typename Master_matrix::Column;                            /**< Column type. */
-  using Row = typename Master_matrix::Row;                                  /**< Row type, only necessary with row
-                                                                                 access option. */
-  using Entry = typename Master_matrix::Matrix_entry;                       /**< @ref Entry "Matrix entry" type. */
-  using Entry_constructor = typename Master_matrix::Entry_constructor;      /**< Factory of @ref Entry classes. */
-  using Column_settings = typename Master_matrix::Column_settings;          /**< Structure giving access to the columns
-                                                                                 to necessary external classes. */
-  using Boundary = typename Master_matrix::Boundary;                        /**< Type of an input column. */
-  using Entry_representative = typename Master_matrix::Entry_representative;  /**< %Entry content representative. */
-  using Index = typename Master_matrix::Index;                              /**< @ref MatIdx index type. */
-  using ID_index = typename Master_matrix::ID_index;                        /**< @ref IDIdx index type. */
-  using Pos_index = typename Master_matrix::Pos_index;                      /**< @ref PosIdx index type. */
-  using Dimension = typename Master_matrix::Dimension;                      /**< Dimension value type. */
+  using Field_element = typename Master_matrix::Element;                     /**< Type of an field element. */
+  using Column = typename Master_matrix::Column;                             /**< Column type. */
+  using Row = typename Master_matrix::Row;                                   /**< Row type, only necessary with row
+                                                                                  access option. */
+  using Entry = typename Master_matrix::Matrix_entry;                        /**< @ref Entry "Matrix entry" type. */
+  using Entry_constructor = typename Master_matrix::Entry_constructor;       /**< Factory of @ref Entry classes. */
+  using Column_settings = typename Master_matrix::Column_settings;           /**< Structure giving access to the columns
+                                                                                  to necessary external classes. */
+  using Boundary = typename Master_matrix::Boundary;                         /**< Type of an input column. */
+  using Entry_representative = typename Master_matrix::Entry_representative; /**< %Entry content representative. */
+  using Index = typename Master_matrix::Index;                               /**< @ref MatIdx index type. */
+  using ID_index = typename Master_matrix::ID_index;                         /**< @ref IDIdx index type. */
+  using Pos_index = typename Master_matrix::Pos_index;                       /**< @ref PosIdx index type. */
+  using Dimension = typename Master_matrix::Dimension;                       /**< Dimension value type. */
 
   /**
    * @brief Constructs an empty matrix. Only available if @ref PersistenceMatrixOptions::has_column_pairings is
@@ -102,8 +126,7 @@ class Chain_matrix : public Master_matrix::Matrix_dimension_option,
    * the necessary external classes specifically necessary for the chosen column type, such as custom allocators.
    */
   template <class Boundary_range = Boundary>
-  Chain_matrix(const std::vector<Boundary_range>& orderedBoundaries,
-               Column_settings* colSettings);
+  Chain_matrix(const std::vector<Boundary_range>& orderedBoundaries, Column_settings* colSettings);
   /**
    * @brief Constructs a new empty matrix and reserves space for the given number of columns. Only available
    * if @ref PersistenceMatrixOptions::has_column_pairings is true or @ref PersistenceMatrixOptions::has_vine_update
@@ -216,14 +239,15 @@ class Chain_matrix : public Master_matrix::Matrix_dimension_option,
    * The structure should contain all the necessary external classes specifically necessary for the chosen column type,
    * such as custom allocators. If null pointer, the pointer stored in @p matrixToCopy is used instead.
    */
-  Chain_matrix(const Chain_matrix& matrixToCopy,
-               Column_settings* colSettings = nullptr);
+  Chain_matrix(const Chain_matrix& matrixToCopy, Column_settings* colSettings = nullptr);
   /**
    * @brief Move constructor.
    *
    * @param other Matrix to move.
    */
   Chain_matrix(Chain_matrix&& other) noexcept;
+
+  ~Chain_matrix() = default;
 
   /**
    * @brief Inserts at the end of the matrix a new ordered column corresponding to the given boundary.
@@ -248,7 +272,8 @@ class Chain_matrix : public Master_matrix::Matrix_dimension_option,
    */
   template <class Boundary_range = Boundary>
   std::vector<Entry_representative> insert_boundary(
-      const Boundary_range& boundary, Dimension dim = Master_matrix::template get_null_value<Dimension>());
+      const Boundary_range& boundary,
+      Dimension dim = Master_matrix::template get_null_value<Dimension>());
   /**
    * @brief It does the same as the other version, but allows the boundary cells to be identified without restrictions
    * except that all IDs have to be strictly increasing in the order of filtration. Note that you should avoid then
@@ -265,10 +290,58 @@ class Chain_matrix : public Master_matrix::Matrix_dimension_option,
    * increasing order.
    * @param dim Dimension of the cell whose boundary is given. If the complex is simplicial,
    * this parameter can be omitted as it can be deduced from the size of the boundary.
-   * @return The @ref MatIdx index of the inserted boundary.
+   * @return The @ref MatIdx indices of the unpaired chains used to reduce the boundary.
    */
   template <class Boundary_range = Boundary>
   std::vector<Entry_representative> insert_boundary(
+      ID_index cellID,
+      const Boundary_range& boundary,
+      Dimension dim = Master_matrix::template get_null_value<Dimension>());
+  /**
+   * @brief Only available if @ref PersistenceMatrixOptions::has_vine_update is true, as well as,
+   * @ref PersistenceMatrixOptions::has_column_pairings or
+   * @ref PersistenceMatrixOptions::can_retrieve_representative_cycles.
+   * Inserts the given maximal boundary using @ref insert_boundary(const Boundary_range&, Dimension) "insert_boundary"
+   * and then moves the column to the given position such that the matrix remains consistent (i.e., the matrix is still
+   * a compatible bases of the chain complex in the sense of @cite zigzag).
+   * The maximality of the cell is not verified.
+   * Also updates the barcode accordantly if it is stored.
+   * 
+   * @tparam Boundary_range Range of @ref Matrix::Entry_representative. Assumed to have a begin(), end() and size()
+   * method.
+   * @param columnIndex @ref MatIdx index where to move the new inserted column.
+   * @param boundary Boundary generating the new column. The content should be ordered by ID.
+   * @param dim Dimension of the cell whose boundary is given. If the complex is simplicial,
+   * this parameter can be omitted as it can be deduced from the size of the boundary.
+   * @return The @ref MatIdx indices of the unpaired chains used to reduce the boundary.
+   */
+  template <class Boundary_range = Boundary>
+  std::vector<Entry_representative> insert_maximal_cell(
+      Index columnIndex,
+      const Boundary_range& boundary,
+      Dimension dim = Master_matrix::template get_null_value<Dimension>());
+  /**
+   * @brief Only available if @ref PersistenceMatrixOptions::has_vine_update is true, as well as,
+   * @ref PersistenceMatrixOptions::has_column_pairings or
+   * @ref PersistenceMatrixOptions::can_retrieve_representative_cycles.
+   * It does the same as the other version, but allows the boundary cells to be identified without restrictions
+   * except that the new ID has to be higher than any other ID use until now. Note that you should avoid then
+   * to use the other insertion method to avoid overwriting IDs.
+   * 
+   * @tparam Boundary_range Range of @ref Matrix::Entry_representative. Assumed to have a begin(), end() and size()
+   * method.
+   * @param columnIndex @ref MatIdx index where to move the new inserted column.
+   * @param cellID @ref IDIdx index to use to identify the new cell.
+   * @param boundary Boundary generating the new column. The indices of the boundary have to correspond to the
+   * @p cellID values of precedent calls of the method for the corresponding cells and should be ordered in
+   * increasing order.
+   * @param dim Dimension of the cell whose boundary is given. If the complex is simplicial,
+   * this parameter can be omitted as it can be deduced from the size of the boundary.
+   * @return The @ref MatIdx indices of the unpaired chains used to reduce the boundary.
+   */
+  template <class Boundary_range = Boundary>
+  std::vector<Entry_representative> insert_maximal_cell(
+      Index columnIndex,
       ID_index cellID,
       const Boundary_range& boundary,
       Dimension dim = Master_matrix::template get_null_value<Dimension>());
@@ -291,7 +364,8 @@ class Chain_matrix : public Master_matrix::Matrix_dimension_option,
   /**
    * @brief Only available if @ref PersistenceMatrixOptions::has_removable_columns and
    * @ref PersistenceMatrixOptions::has_vine_update are true, as well as,
-   * @ref PersistenceMatrixOptions::has_map_column_container and @ref PersistenceMatrixOptions::has_column_pairings.
+   * @ref PersistenceMatrixOptions::has_map_column_container, and, @ref PersistenceMatrixOptions::has_column_pairings
+   * or @ref PersistenceMatrixOptions::can_retrieve_representative_cycles.
    * Assumes that the cell is maximal in the current complex and removes it such that the matrix remains consistent
    * (i.e., the matrix is still a compatible bases of the chain complex in the sense of @cite zigzag).
    * The maximality of the cell is not verified.
@@ -383,9 +457,7 @@ class Chain_matrix : public Master_matrix::Matrix_dimension_option,
    * @param coefficient Value to multiply.
    * @param targetColumnIndex @ref MatIdx index of the target column.
    */
-  void multiply_target_and_add_to(Index sourceColumnIndex,
-                                  const Field_element& coefficient,
-                                  Index targetColumnIndex);
+  void multiply_target_and_add_to(Index sourceColumnIndex, const Field_element& coefficient, Index targetColumnIndex);
   /**
    * @brief Multiplies the source column with the coefficient before adding it to the target column.
    * That is: `targetColumn += (coefficient * sourceColumn)`. The source column will **not** be modified.
@@ -398,9 +470,7 @@ class Chain_matrix : public Master_matrix::Matrix_dimension_option,
    * @param sourceColumnIndex @ref MatIdx index of the source column.
    * @param targetColumnIndex @ref MatIdx index of the target column.
    */
-  void multiply_source_and_add_to(const Field_element& coefficient,
-                                  Index sourceColumnIndex,
-                                  Index targetColumnIndex);
+  void multiply_source_and_add_to(const Field_element& coefficient, Index sourceColumnIndex, Index targetColumnIndex);
 
   /**
    * @brief Indicates if the entry at given coordinates has value zero.
@@ -442,10 +512,16 @@ class Chain_matrix : public Master_matrix::Matrix_dimension_option,
    * @param colSettings Pointer to an existing setting structure for the columns. The structure should contain all
    * the necessary external classes specifically necessary for the chosen column type, such as custom allocators.
    */
-  void reset(Column_settings* colSettings) {
+  void reset(Column_settings* colSettings)
+  {
+    if constexpr (Master_matrix::Option_list::has_matrix_maximal_dimension_access) Dim_opt::_reset();
+    if constexpr (Master_matrix::Option_list::has_column_pairings) Pair_opt::_reset();
+    if constexpr (Master_matrix::Option_list::can_retrieve_representative_cycles) Rep_opt::_reset();
+    if constexpr (hasPivotToPosMap_) Pivot_to_pos_mapper_opt::map_.clear();
     matrix_.clear();
     pivotToColumnIndex_.clear();
     nextIndex_ = 0;
+    nextPosition_ = 0;
     colSettings_ = colSettings;
   }
 
@@ -454,56 +530,58 @@ class Chain_matrix : public Master_matrix::Matrix_dimension_option,
    */
   Chain_matrix& operator=(const Chain_matrix& other);
   /**
+   * @brief Move assign operator.
+   */
+  Chain_matrix& operator=(Chain_matrix&& other) noexcept;
+
+  /**
    * @brief Swap operator.
    */
-  friend void swap(Chain_matrix& matrix1, Chain_matrix& matrix2) {
-    swap(static_cast<typename Master_matrix::Matrix_dimension_option&>(matrix1),
-         static_cast<typename Master_matrix::Matrix_dimension_option&>(matrix2));
-    swap(static_cast<typename Master_matrix::Chain_pairing_option&>(matrix1),
-         static_cast<typename Master_matrix::Chain_pairing_option&>(matrix2));
-    swap(static_cast<typename Master_matrix::Chain_vine_swap_option&>(matrix1),
-         static_cast<typename Master_matrix::Chain_vine_swap_option&>(matrix2));
-    swap(static_cast<typename Master_matrix::Chain_representative_cycles_option&>(matrix1),
-         static_cast<typename Master_matrix::Chain_representative_cycles_option&>(matrix2));
+  friend void swap(Chain_matrix& matrix1, Chain_matrix& matrix2) noexcept
+  {
+    swap(static_cast<Dim_opt&>(matrix1), static_cast<Dim_opt&>(matrix2));
+    swap(static_cast<Pair_opt&>(matrix1), static_cast<Pair_opt&>(matrix2));
+    swap(static_cast<Swap_opt&>(matrix1), static_cast<Swap_opt&>(matrix2));
+    swap(static_cast<Rep_opt&>(matrix1), static_cast<Rep_opt&>(matrix2));
+    swap(static_cast<Pivot_to_pos_mapper_opt&>(matrix1), static_cast<Pivot_to_pos_mapper_opt&>(matrix2));
     matrix1.matrix_.swap(matrix2.matrix_);
     matrix1.pivotToColumnIndex_.swap(matrix2.pivotToColumnIndex_);
     std::swap(matrix1.nextIndex_, matrix2.nextIndex_);
+    std::swap(matrix1.nextPosition_, matrix2.nextPosition_);
     std::swap(matrix1.colSettings_, matrix2.colSettings_);
 
     if constexpr (Master_matrix::Option_list::has_row_access) {
-      swap(static_cast<typename Master_matrix::Matrix_row_access_option&>(matrix1),
-           static_cast<typename Master_matrix::Matrix_row_access_option&>(matrix2));
+      swap(static_cast<RA_opt&>(matrix1), static_cast<RA_opt&>(matrix2));
     }
   }
 
   void print() const;  // for debug
 
   friend class Id_to_index_overlay<Chain_matrix<Master_matrix>, Master_matrix>;
+  friend class Position_to_index_overlay<Chain_matrix<Master_matrix>, Master_matrix>;
 
  private:
-  using Dim_opt = typename Master_matrix::Matrix_dimension_option;
-  using Swap_opt = typename Master_matrix::Chain_vine_swap_option;
-  using Pair_opt = typename Master_matrix::Chain_pairing_option;
-  using Rep_opt = typename Master_matrix::Chain_representative_cycles_option;
-  using RA_opt = typename Master_matrix::Matrix_row_access_option;
   using Column_container = typename Master_matrix::Column_container;
   using Dictionary = typename Master_matrix::template Dictionary<Index>;
   using Barcode = typename Master_matrix::Barcode;
   using Bar_dictionary = typename Master_matrix::Bar_dictionary;
-  using Tmp_column = typename std::conditional<Master_matrix::Option_list::is_z2,
-                                               std::set<ID_index>,
-                                               std::map<ID_index, Field_element>
-                                              >::type;
+  using Tmp_column = typename std::
+      conditional<Master_matrix::Option_list::is_z2, std::set<ID_index>, std::map<ID_index, Field_element>>::type;
+
+  friend Swap_opt;  // direct access to index mapper
+  friend Pair_opt;  // direct access to index mapper
+  friend Rep_opt;   // direct access to index mapper
 
   Column_container matrix_;       /**< Column container. */
   Dictionary pivotToColumnIndex_; /**< Map from @ref IDIdx to @ref MatIdx index. */
   Index nextIndex_;               /**< Next unused column index. */
+  Pos_index nextPosition_;        /**< Next relative position in the filtration. */
   Column_settings* colSettings_;  /**< Entry factory. */
 
   template <class Boundary_range>
   std::vector<Entry_representative> _reduce_boundary(ID_index cellID, const Boundary_range& boundary, Dimension dim);
-  void _reduce_by_G(Tmp_column& column, std::vector<Entry_representative>& chainsInH, Index currentPivot);
-  void _reduce_by_F(Tmp_column& column, std::vector<Entry_representative>& chainsInF, Index currentPivot);
+  void _reduce_by_G(Tmp_column& column, std::vector<Entry_representative>& chainsInH, Index currentIndex);
+  void _reduce_by_F(Tmp_column& column, std::vector<Entry_representative>& chainsInF, Index currentIndex);
   void _build_from_H(ID_index cellID, Tmp_column& column, std::vector<Entry_representative>& chainsInH);
   void _update_largest_death_in_F(const std::vector<Entry_representative>& chainsInF);
   void _insert_chain(const Tmp_column& column, Dimension dimension);
@@ -516,11 +594,10 @@ class Chain_matrix : public Master_matrix::Matrix_dimension_option,
   void _add_bar(Dimension dim);
   template <class Container>
   void _container_insert(const Container& column, Index pos, Dimension dim);
-  void _container_insert(const Column& column, [[maybe_unused]] Index pos = 0);
+  template <class ColumnIterator>
+  void _container_insert(const ColumnIterator& rep);
 
-  constexpr Barcode& _barcode();
-  constexpr Bar_dictionary& _indexToBar();
-  constexpr Pos_index& _nextPosition();
+  static void _insert_in(ID_index cellID, Tmp_column& column);
 };
 
 template <class Master_matrix>
@@ -530,7 +607,9 @@ inline Chain_matrix<Master_matrix>::Chain_matrix(Column_settings* colSettings)
       Swap_opt(),
       Rep_opt(),
       RA_opt(),
+      Pivot_to_pos_mapper_opt(),
       nextIndex_(0),
+      nextPosition_(0),
       colSettings_(colSettings)
 {}
 
@@ -543,7 +622,9 @@ inline Chain_matrix<Master_matrix>::Chain_matrix(const std::vector<Boundary_rang
       Swap_opt(),
       Rep_opt(),
       RA_opt(orderedBoundaries.size()),
+      Pivot_to_pos_mapper_opt(),
       nextIndex_(0),
+      nextPosition_(0),
       colSettings_(colSettings)
 {
   matrix_.reserve(orderedBoundaries.size());
@@ -559,14 +640,15 @@ inline Chain_matrix<Master_matrix>::Chain_matrix(const std::vector<Boundary_rang
 }
 
 template <class Master_matrix>
-inline Chain_matrix<Master_matrix>::Chain_matrix(unsigned int numberOfColumns,
-                                                 Column_settings* colSettings)
+inline Chain_matrix<Master_matrix>::Chain_matrix(unsigned int numberOfColumns, Column_settings* colSettings)
     : Dim_opt(Master_matrix::template get_null_value<Dimension>()),
       Pair_opt(),
       Swap_opt(),
       Rep_opt(),
       RA_opt(numberOfColumns),
+      Pivot_to_pos_mapper_opt(),
       nextIndex_(0),
+      nextPosition_(0),
       colSettings_(colSettings)
 {
   matrix_.reserve(numberOfColumns);
@@ -587,7 +669,9 @@ inline Chain_matrix<Master_matrix>::Chain_matrix(Column_settings* colSettings,
       Swap_opt(birthComparator, deathComparator),
       Rep_opt(),
       RA_opt(),
+      Pivot_to_pos_mapper_opt(),
       nextIndex_(0),
+      nextPosition_(0),
       colSettings_(colSettings)
 {}
 
@@ -602,7 +686,9 @@ inline Chain_matrix<Master_matrix>::Chain_matrix(const std::vector<Boundary_rang
       Swap_opt(birthComparator, deathComparator),
       Rep_opt(),
       RA_opt(orderedBoundaries.size()),
+      Pivot_to_pos_mapper_opt(),
       nextIndex_(0),
+      nextPosition_(0),
       colSettings_(colSettings)
 {
   matrix_.reserve(orderedBoundaries.size());
@@ -627,7 +713,9 @@ inline Chain_matrix<Master_matrix>::Chain_matrix(unsigned int numberOfColumns,
       Swap_opt(birthComparator, deathComparator),
       Rep_opt(),
       RA_opt(numberOfColumns),
+      Pivot_to_pos_mapper_opt(),
       nextIndex_(0),
+      nextPosition_(0),
       colSettings_(colSettings)
 {
   matrix_.reserve(numberOfColumns);
@@ -645,17 +733,15 @@ inline Chain_matrix<Master_matrix>::Chain_matrix(const Chain_matrix& matrixToCop
       Swap_opt(static_cast<const Swap_opt&>(matrixToCopy)),
       Rep_opt(static_cast<const Rep_opt&>(matrixToCopy)),
       RA_opt(static_cast<const RA_opt&>(matrixToCopy)),
+      Pivot_to_pos_mapper_opt(static_cast<const Pivot_to_pos_mapper_opt&>(matrixToCopy)),
       pivotToColumnIndex_(matrixToCopy.pivotToColumnIndex_),
       nextIndex_(matrixToCopy.nextIndex_),
+      nextPosition_(matrixToCopy.nextPosition_),
       colSettings_(colSettings == nullptr ? matrixToCopy.colSettings_ : colSettings)
 {
   matrix_.reserve(matrixToCopy.matrix_.size());
-  for (const auto& cont : matrixToCopy.matrix_){
-    if constexpr (Master_matrix::Option_list::has_map_column_container){
-      _container_insert(cont.second, cont.first);
-    } else {
-      _container_insert(cont);
-    }
+  for (const auto& cont : matrixToCopy.matrix_) {
+    _container_insert(cont);
   }
 }
 
@@ -666,49 +752,114 @@ inline Chain_matrix<Master_matrix>::Chain_matrix(Chain_matrix&& other) noexcept
       Swap_opt(std::move(static_cast<Swap_opt&>(other))),
       Rep_opt(std::move(static_cast<Rep_opt&>(other))),
       RA_opt(std::move(static_cast<RA_opt&>(other))),
+      Pivot_to_pos_mapper_opt(std::move(static_cast<Pivot_to_pos_mapper_opt&>(other))),
       matrix_(std::move(other.matrix_)),
       pivotToColumnIndex_(std::move(other.pivotToColumnIndex_)),
       nextIndex_(std::exchange(other.nextIndex_, 0)),
+      nextPosition_(std::exchange(other.nextPosition_, 0)),
       colSettings_(std::exchange(other.colSettings_, nullptr))
 {}
 
 template <class Master_matrix>
 template <class Boundary_range>
 inline std::vector<typename Master_matrix::Entry_representative> Chain_matrix<Master_matrix>::insert_boundary(
-    const Boundary_range& boundary, Dimension dim)
+    const Boundary_range& boundary,
+    Dimension dim)
 {
   return insert_boundary(nextIndex_, boundary, dim);
 }
 
 template <class Master_matrix>
 template <class Boundary_range>
-inline std::vector<typename Master_matrix::Entry_representative> Chain_matrix<Master_matrix>::insert_boundary(
-    ID_index cellID, const Boundary_range& boundary, Dimension dim)
+inline std::vector<typename Master_matrix::Entry_representative>
+Chain_matrix<Master_matrix>::insert_boundary(ID_index cellID, const Boundary_range& boundary, Dimension dim)
 {
   if constexpr (!Master_matrix::Option_list::has_map_column_container) {
     if (pivotToColumnIndex_.size() <= cellID) {
-      pivotToColumnIndex_.resize(cellID * 2 + 1, Master_matrix::template get_null_value<Index>());
+      pivotToColumnIndex_.resize((cellID * 2) + 1, Master_matrix::template get_null_value<Index>());
     }
   }
 
-  if constexpr (Master_matrix::Option_list::has_vine_update && Master_matrix::Option_list::has_column_pairings) {
+  if constexpr (hasPivotToPosMap_) {
     if constexpr (Master_matrix::Option_list::has_map_column_container) {
-      Swap_opt::CP::pivotToPosition_.try_emplace(cellID, _nextPosition());
+      Pivot_to_pos_mapper_opt::map_.try_emplace(cellID, nextPosition_);
     } else {
-      if (Swap_opt::CP::pivotToPosition_.size() <= cellID)
-        Swap_opt::CP::pivotToPosition_.resize(pivotToColumnIndex_.size(),
-                                              Master_matrix::template get_null_value<Pos_index>());
-      Swap_opt::CP::pivotToPosition_[cellID] = _nextPosition();
+      if (Pivot_to_pos_mapper_opt::map_.size() <= cellID)
+        Pivot_to_pos_mapper_opt::map_.resize(pivotToColumnIndex_.size(),
+                                             Master_matrix::template get_null_value<Pos_index>());
+      Pivot_to_pos_mapper_opt::map_[cellID] = nextPosition_;
     }
   }
 
   if constexpr (Master_matrix::Option_list::has_matrix_maximal_dimension_access) {
-    Dim_opt::update_up(dim == Master_matrix::template get_null_value<Dimension>()
-                           ? (boundary.size() == 0 ? 0 : boundary.size() - 1)
-                           : dim);
+    Dim_opt::_update_up(dim == Master_matrix::template get_null_value<Dimension>()
+                            ? (boundary.size() == 0 ? 0 : boundary.size() - 1)
+                            : dim);
   }
 
   return _reduce_boundary(cellID, boundary, dim);
+}
+
+template <class Master_matrix>
+template <class Boundary_range>
+inline std::vector<typename Master_matrix::Entry_representative>
+Chain_matrix<Master_matrix>::insert_maximal_cell(Index columnIndex, const Boundary_range& boundary, Dimension dim)
+{
+  return insert_maximal_cell(columnIndex, nextIndex_, boundary, dim);
+}
+
+template <class Master_matrix>
+template <class Boundary_range>
+inline std::vector<typename Master_matrix::Entry_representative> Chain_matrix<Master_matrix>::insert_maximal_cell(
+    Index columnIndex,
+    ID_index cellID,
+    const Boundary_range& boundary,
+    Dimension dim)
+{
+  static_assert(
+      Master_matrix::Option_list::has_vine_update && (Master_matrix::Option_list::has_column_pairings ||
+                                                      Master_matrix::Option_list::can_retrieve_representative_cycles),
+      "'insert_maximal_cell' is not implemented for the chosen options.");
+
+  GUDHI_CHECK(columnIndex >= 0, std::invalid_argument("Indices have to be positive."));
+
+  auto chainsInF = insert_boundary(cellID, boundary, dim);
+
+  const auto& pivotToPosition = Pivot_to_pos_mapper_opt::map_;
+  Pos_index startPos = nextPosition_ - 1;
+  Index startIndex = pivotToColumnIndex_[cellID];
+
+  if (startPos > columnIndex) {
+    std::vector<Index> colToSwap;
+    colToSwap.reserve(pivotToPosition.size());
+
+    // first loop stores all column indices whose filtration position should be after the new column
+    // then orders the matrix indices by filtration position as they do not have to correspond
+    // the underlying column container is not the same depending on `has_map_column_container`: one is a map, the
+    // other a vector. To optimize the usage of both containers, the `if constexpr` differentiation is made
+    if constexpr (Master_matrix::Option_list::has_map_column_container) {
+      for (auto& p : pivotToPosition) {
+        if (p.second >= columnIndex && p.second < startPos) colToSwap.push_back(pivotToColumnIndex_.at(p.first));
+      }
+      std::sort(colToSwap.begin(), colToSwap.end(), [&](Index c1, Index c2) {
+        return pivotToPosition.at(get_pivot(c1)) > pivotToPosition.at(get_pivot(c2));
+      });
+    } else {
+      for (Index i = 0; i < pivotToPosition.size(); ++i) {
+        if (pivotToPosition[i] >= columnIndex && pivotToPosition[i] < startPos)
+          colToSwap.push_back(pivotToColumnIndex_[i]);
+      }
+      std::sort(colToSwap.begin(), colToSwap.end(), [&](Index c1, Index c2) {
+        return pivotToPosition[get_pivot(c1)] > pivotToPosition[get_pivot(c2)];
+      });
+    }
+
+    for (Index i : colToSwap) {
+      startIndex = Swap_opt::vine_swap(i, startIndex) == startIndex ? i : startIndex;
+    }
+  }
+
+  return chainsInF;
 }
 
 template <class Master_matrix>
@@ -735,22 +886,23 @@ inline const typename Chain_matrix<Master_matrix>::Column& Chain_matrix<Master_m
 template <class Master_matrix>
 inline void Chain_matrix<Master_matrix>::remove_maximal_cell(ID_index cellID)
 {
-  static_assert(Master_matrix::Option_list::has_removable_columns,
-                "'remove_maximal_cell' is not implemented for the chosen options.");
-  static_assert(Master_matrix::Option_list::has_map_column_container &&
-                    Master_matrix::Option_list::has_vine_update &&
-                    Master_matrix::Option_list::has_column_pairings,
-                "'remove_maximal_cell' is not implemented for the chosen options.");
+  static_assert(
+      Master_matrix::Option_list::has_removable_columns && Master_matrix::Option_list::has_map_column_container,
+      "'remove_maximal_cell' is not implemented for the chosen options.");
+  static_assert(
+      Master_matrix::Option_list::has_vine_update && (Master_matrix::Option_list::has_column_pairings ||
+                                                      Master_matrix::Option_list::can_retrieve_representative_cycles),
+      "'remove_maximal_cell' is not implemented for the chosen options.");
 
   // TODO: find simple test to verify that col at columnIndex is maximal even without row access.
 
-  const auto& pivotToPosition = Swap_opt::CP::pivotToPosition_;
+  const auto& pivotToPosition = Pivot_to_pos_mapper_opt::map_;
   auto it = pivotToPosition.find(cellID);
   if (it == pivotToPosition.end()) return;  // cell does not exists. TODO: put an assert instead?
   Pos_index startPos = it->second;
   Index startIndex = pivotToColumnIndex_.at(cellID);
 
-  if (startPos != _nextPosition() - 1) {
+  if (startPos != nextPosition_ - 1) {
     std::vector<Index> colToSwap;
     colToSwap.reserve(matrix_.size());
 
@@ -892,23 +1044,43 @@ inline typename Chain_matrix<Master_matrix>::ID_index Chain_matrix<Master_matrix
 template <class Master_matrix>
 inline Chain_matrix<Master_matrix>& Chain_matrix<Master_matrix>::operator=(const Chain_matrix& other)
 {
+  if (this == &other) return *this;
+
   Dim_opt::operator=(other);
   Swap_opt::operator=(other);
   Pair_opt::operator=(other);
   Rep_opt::operator=(other);
+  Pivot_to_pos_mapper_opt::operator=(other);
   matrix_.clear();
   pivotToColumnIndex_ = other.pivotToColumnIndex_;
   nextIndex_ = other.nextIndex_;
+  nextPosition_ = other.nextPosition_;
   colSettings_ = other.colSettings_;
 
   matrix_.reserve(other.matrix_.size());
-  for (const auto& cont : other.matrix_){
-    if constexpr (Master_matrix::Option_list::has_map_column_container){
-      _container_insert(cont.second, cont.first);
-    } else {
-      _container_insert(cont);
-    }
+  for (const auto& cont : other.matrix_) {
+    _container_insert(cont);
   }
+
+  return *this;
+}
+
+template <class Master_matrix>
+inline Chain_matrix<Master_matrix>& Chain_matrix<Master_matrix>::operator=(Chain_matrix&& other) noexcept
+{
+  if (this == &other) return *this;
+
+  Dim_opt::operator=(std::move(other));
+  Pair_opt::operator=(std::move(other));
+  Swap_opt::operator=(std::move(other));
+  Rep_opt::operator=(std::move(other));
+  RA_opt::operator=(std::move(other));
+  Pivot_to_pos_mapper_opt::operator=(std::move(other));
+  matrix_ = std::move(other.matrix_);
+  pivotToColumnIndex_ = std::move(other.pivotToColumnIndex_);
+  nextIndex_ = std::exchange(other.nextIndex_, 0);
+  nextPosition_ = std::exchange(other.nextPosition_, 0);
+  colSettings_ = std::exchange(other.colSettings_, nullptr);
 
   return *this;
 }
@@ -920,7 +1092,7 @@ inline void Chain_matrix<Master_matrix>::print() const
   if constexpr (!Master_matrix::Option_list::has_map_column_container) {
     for (ID_index i = 0; i < pivotToColumnIndex_.size(); ++i) {
       Index pos = pivotToColumnIndex_[i];
-      if (pos != Master_matrix::template get_null_value<Index>()){
+      if (pos != Master_matrix::template get_null_value<Index>()) {
         const Column& col = matrix_[pos];
         for (const auto& entry : col) {
           std::cout << entry.get_row_index() << " ";
@@ -933,7 +1105,7 @@ inline void Chain_matrix<Master_matrix>::print() const
       std::cout << "Row Matrix:\n";
       for (ID_index i = 0; i < pivotToColumnIndex_.size(); ++i) {
         Index pos = pivotToColumnIndex_[i];
-        if (pos != Master_matrix::template get_null_value<Index>()){
+        if (pos != Master_matrix::template get_null_value<Index>()) {
           const Row& row = RA_opt::get_row(pos);
           for (const auto& entry : row) {
             std::cout << entry.get_column_index() << " ";
@@ -967,8 +1139,8 @@ inline void Chain_matrix<Master_matrix>::print() const
 
 template <class Master_matrix>
 template <class Boundary_range>
-inline std::vector<typename Master_matrix::Entry_representative> Chain_matrix<Master_matrix>::_reduce_boundary(
-    ID_index cellID, const Boundary_range& boundary, Dimension dim)
+inline std::vector<typename Master_matrix::Entry_representative>
+Chain_matrix<Master_matrix>::_reduce_boundary(ID_index cellID, const Boundary_range& boundary, Dimension dim)
 {
   Tmp_column column(boundary.begin(), boundary.end());
   if (dim == Master_matrix::template get_null_value<Dimension>())
@@ -984,10 +1156,7 @@ inline std::vector<typename Master_matrix::Entry_representative> Chain_matrix<Ma
   };
 
   if (boundary.begin() == boundary.end()) {
-    if constexpr (Master_matrix::Option_list::is_z2)
-      column.insert(cellID);
-    else
-      column.emplace(cellID, 1);
+    _insert_in(cellID, column);
     _insert_chain(column, dim);
     return chainsInF;
   }
@@ -1025,10 +1194,7 @@ inline std::vector<typename Master_matrix::Entry_representative> Chain_matrix<Ma
   _build_from_H(cellID, column, chainsInH);
 
   // Create and insert (\sum col_h) + sigma (in H, paired with chain_fp) in matrix_
-  if constexpr (Master_matrix::Option_list::is_z2)
-    _insert_chain(column, dim, chainsInF[0]);
-  else
-    _insert_chain(column, dim, chainsInF[0].first);
+  _insert_chain(column, dim, Master_matrix::get_row_index(chainsInF[0]));
 
   return chainsInF;
 }
@@ -1040,7 +1206,7 @@ inline void Chain_matrix<Master_matrix>::_reduce_by_G(Tmp_column& column,
 {
   Column& col = get_column(currentIndex);
   if constexpr (Master_matrix::Option_list::is_z2) {
-    _add_to(col, column, 1u);                           // Reduce with the column col_g
+    _add_to(col, column, 1U);                           // Reduce with the column col_g
     chainsInH.push_back(col.get_paired_chain_index());  // keep the col_h with which col_g is paired
   } else {
     Field_element coef = col.get_pivot_value();
@@ -1048,8 +1214,8 @@ inline void Chain_matrix<Master_matrix>::_reduce_by_G(Tmp_column& column,
     coef = operators.get_inverse(coef);
     operators.multiply_inplace(coef, operators.get_characteristic() - column.rbegin()->second);
 
-    _add_to(col, column, coef);                                       // Reduce with the column col_g
-    chainsInH.emplace_back(col.get_paired_chain_index(), coef); // keep the col_h with which col_g is paired
+    _add_to(col, column, coef);                                  // Reduce with the column col_g
+    chainsInH.emplace_back(col.get_paired_chain_index(), coef);  // keep the col_h with which col_g is paired
   }
 }
 
@@ -1060,7 +1226,7 @@ inline void Chain_matrix<Master_matrix>::_reduce_by_F(Tmp_column& column,
 {
   Column& col = get_column(currentIndex);
   if constexpr (Master_matrix::Option_list::is_z2) {
-    _add_to(col, column, 1u);  // Reduce with the column col_g
+    _add_to(col, column, 1U);  // Reduce with the column col_g
     chainsInF.push_back(currentIndex);
   } else {
     Field_element coef = col.get_pivot_value();
@@ -1078,32 +1244,26 @@ inline void Chain_matrix<Master_matrix>::_build_from_H(ID_index cellID,
                                                        Tmp_column& column,
                                                        std::vector<Entry_representative>& chainsInH)
 {
-  if constexpr (Master_matrix::Option_list::is_z2) {
-    column.insert(cellID);
-    for (Index idx_h : chainsInH) {
-      _add_to(get_column(idx_h), column, 1u);
-    }
-  } else {
-    column.emplace(cellID, 1);
-    for (std::pair<Index, Field_element>& idx_h : chainsInH) {
-      _add_to(get_column(idx_h.first), column, idx_h.second);
-    }
+  _insert_in(cellID, column);
+
+  for (const auto& idx_h : chainsInH) {
+    _add_to(get_column(Master_matrix::get_row_index(idx_h)), column, Master_matrix::get_element(idx_h));
   }
 }
 
 template <class Master_matrix>
 inline void Chain_matrix<Master_matrix>::_update_largest_death_in_F(const std::vector<Entry_representative>& chainsInF)
 {
+  Index toUpdate = Master_matrix::get_row_index(chainsInF[0]);
   if constexpr (Master_matrix::Option_list::is_z2) {
-    Index toUpdate = chainsInF[0];
     for (auto other_col_it = chainsInF.begin() + 1; other_col_it != chainsInF.end(); ++other_col_it) {
       add_to(*other_col_it, toUpdate);
     }
   } else {
-    Index toUpdate = chainsInF[0].first;
-    get_column(toUpdate) *= chainsInF[0].second;
+    get_column(toUpdate) *= Master_matrix::get_element(chainsInF[0]);
     for (auto other_col_it = chainsInF.begin() + 1; other_col_it != chainsInF.end(); ++other_col_it) {
-      multiply_source_and_add_to(other_col_it->second, other_col_it->first, toUpdate);
+      multiply_source_and_add_to(
+          Master_matrix::get_element(*other_col_it), Master_matrix::get_row_index(*other_col_it), toUpdate);
     }
   }
 }
@@ -1131,7 +1291,7 @@ inline void Chain_matrix<Master_matrix>::_insert_chain(const Tmp_column& column,
   pairCol.assign_paired_chain(nextIndex_);
 
   if constexpr (Master_matrix::Option_list::has_column_pairings && Master_matrix::Option_list::has_vine_update) {
-    pairPos = Swap_opt::CP::pivotToPosition_[pairCol.get_pivot()];
+    pairPos = Pivot_to_pos_mapper_opt::map_[pairCol.get_pivot()];
   }
 
   _update_barcode(pairPos);
@@ -1156,7 +1316,7 @@ inline void Chain_matrix<Master_matrix>::_add_to(const Column& column,
     auto& operators = colSettings_->operators;
     for (const Entry& entry : column) {
       auto res = set.emplace(entry.get_row_index(), entry.get_element());
-      if (res.second){
+      if (res.second) {
         operators.multiply_inplace(res.first->second, coef);
       } else {
         operators.multiply_and_add_inplace_back(entry.get_element(), coef, res.first->second);
@@ -1173,7 +1333,7 @@ template <typename F>
 inline void Chain_matrix<Master_matrix>::_add_to(Column& target, F&& addition)
 {
   auto pivot = target.get_pivot();
-  addition();
+  std::forward<F>(addition)();
 
   if (pivot != target.get_pivot()) {
     if constexpr (Master_matrix::Option_list::has_map_column_container) {
@@ -1200,7 +1360,7 @@ inline void Chain_matrix<Master_matrix>::_remove_last(Index lastIndex)
     pivot = colToErase.get_pivot();
 
     if constexpr (Master_matrix::Option_list::has_matrix_maximal_dimension_access) {
-      Dim_opt::update_down(colToErase.get_dimension());
+      Dim_opt::_update_down(colToErase.get_dimension());
     }
 
     if (colToErase.is_paired()) matrix_.at(colToErase.get_paired_chain_index()).unassign_paired_chain();
@@ -1214,7 +1374,7 @@ inline void Chain_matrix<Master_matrix>::_remove_last(Index lastIndex)
     pivot = colToErase.get_pivot();
 
     if constexpr (Master_matrix::Option_list::has_matrix_maximal_dimension_access) {
-      Dim_opt::update_down(colToErase.get_dimension());
+      Dim_opt::_update_down(colToErase.get_dimension());
     }
 
     if (colToErase.is_paired()) matrix_.at(colToErase.get_paired_chain_index()).unassign_paired_chain();
@@ -1227,17 +1387,12 @@ inline void Chain_matrix<Master_matrix>::_remove_last(Index lastIndex)
     --nextIndex_;  // should not be updated when there are vine updates, as possibly lastIndex != nextIndex - 1
   }
 
+  --nextPosition_;
   if constexpr (Master_matrix::Option_list::has_column_pairings) {
-    auto it = _indexToBar().find(--_nextPosition());
-    typename Barcode::iterator bar = it->second;
-
-    if (bar->death == Master_matrix::template get_null_value<Pos_index>())
-      _barcode().erase(bar);
-    else
-      bar->death = Master_matrix::template get_null_value<Pos_index>();
-
-    _indexToBar().erase(it);
-    if constexpr (Master_matrix::Option_list::has_vine_update) Swap_opt::CP::pivotToPosition_.erase(pivot);
+    Pair_opt::_erase_bar(nextPosition_);
+  }
+  if constexpr (hasPivotToPosMap_) {
+    Pivot_to_pos_mapper_opt::map_.erase(pivot);
   }
 
   if constexpr (Master_matrix::Option_list::has_row_access) {
@@ -1255,52 +1410,36 @@ template <class Master_matrix>
 inline void Chain_matrix<Master_matrix>::_update_barcode(Pos_index birth)
 {
   if constexpr (Master_matrix::Option_list::has_column_pairings) {
-    if constexpr (Master_matrix::Option_list::has_removable_columns) {
-      auto& barIt = _indexToBar().at(birth);
-      barIt->death = _nextPosition();
-      _indexToBar().try_emplace(_nextPosition(), barIt);  // list so iterators are stable
-    } else {
-      _barcode()[_indexToBar()[birth]].death = _nextPosition();
-      _indexToBar().push_back(_indexToBar()[birth]);
-    }
-    ++_nextPosition();
+    Pair_opt::_update_barcode(birth, nextPosition_);
   }
+  ++nextPosition_;
 }
 
 template <class Master_matrix>
 inline void Chain_matrix<Master_matrix>::_add_bar(Dimension dim)
 {
   if constexpr (Master_matrix::Option_list::has_column_pairings) {
-    _barcode().emplace_back(_nextPosition(), Master_matrix::template get_null_value<Pos_index>(), dim);
-    if constexpr (Master_matrix::Option_list::has_removable_columns) {
-      _indexToBar().try_emplace(_nextPosition(), --_barcode().end());
-    } else {
-      _indexToBar().push_back(_barcode().size() - 1);
-    }
-    ++_nextPosition();
+    Pair_opt::_add_bar(dim, nextPosition_);
   }
+  ++nextPosition_;
 }
 
 template <class Master_matrix>
 template <class Container>
 inline void Chain_matrix<Master_matrix>::_container_insert(const Container& column, Index pos, Dimension dim)
 {
-  ID_index pivot;
-  if constexpr (Master_matrix::Option_list::is_z2) {
-    pivot = *(column.rbegin());
-  } else {
-    pivot = column.rbegin()->first;
-  }
+  ID_index pivot = Master_matrix::get_row_index(*(column.rbegin()));
+
   if constexpr (Master_matrix::Option_list::has_map_column_container) {
     pivotToColumnIndex_.try_emplace(pivot, pos);
     if constexpr (Master_matrix::Option_list::has_row_access) {
-      matrix_.try_emplace(pos, Column(pos, column, dim, RA_opt::rows_, colSettings_));
+      matrix_.try_emplace(pos, Column(pos, column, dim, RA_opt::_get_rows_ptr(), colSettings_));
     } else {
       matrix_.try_emplace(pos, Column(column, dim, colSettings_));
     }
   } else {
     if constexpr (Master_matrix::Option_list::has_row_access) {
-      matrix_.emplace_back(pos, column, dim, RA_opt::rows_, colSettings_);
+      matrix_.emplace_back(pos, column, dim, RA_opt::_get_rows_ptr(), colSettings_);
     } else {
       matrix_.emplace_back(column, dim, colSettings_);
     }
@@ -1309,49 +1448,32 @@ inline void Chain_matrix<Master_matrix>::_container_insert(const Container& colu
 }
 
 template <class Master_matrix>
-inline void Chain_matrix<Master_matrix>::_container_insert(const Column& column, [[maybe_unused]] Index pos)
+template <class ColumnIterator> // Pair (pos,Column) if has_map_column_container, Column otherwise
+inline void Chain_matrix<Master_matrix>::_container_insert(const ColumnIterator& rep)
 {
   if constexpr (Master_matrix::Option_list::has_map_column_container) {
+    const auto& col = rep.second;
     if constexpr (Master_matrix::Option_list::has_row_access) {
-      matrix_.try_emplace(pos, Column(column, column.get_column_index(), RA_opt::rows_, colSettings_));
+      matrix_.try_emplace(rep.first, Column(col, col.get_column_index(), RA_opt::_get_rows_ptr(), colSettings_));
     } else {
-      matrix_.try_emplace(pos, Column(column, colSettings_));
+      matrix_.try_emplace(rep.first, Column(col, colSettings_));
     }
   } else {
     if constexpr (Master_matrix::Option_list::has_row_access) {
-      matrix_.emplace_back(column, column.get_column_index(), RA_opt::rows_, colSettings_);
+      matrix_.emplace_back(rep, rep.get_column_index(), RA_opt::_get_rows_ptr(), colSettings_);
     } else {
-      matrix_.emplace_back(column, colSettings_);
+      matrix_.emplace_back(rep, colSettings_);
     }
   }
 }
 
 template <class Master_matrix>
-inline constexpr typename Chain_matrix<Master_matrix>::Barcode& Chain_matrix<Master_matrix>::_barcode()
+inline void Chain_matrix<Master_matrix>::_insert_in(ID_index cellID, Tmp_column& column)
 {
-  if constexpr (Master_matrix::Option_list::has_vine_update)
-    return Swap_opt::template Chain_pairing<Master_matrix>::barcode_;
+  if constexpr (Master_matrix::Option_list::is_z2)
+    column.insert(cellID);
   else
-    return Pair_opt::barcode_;
-}
-
-template <class Master_matrix>
-inline constexpr typename Chain_matrix<Master_matrix>::Bar_dictionary&
-Chain_matrix<Master_matrix>::_indexToBar()
-{
-  if constexpr (Master_matrix::Option_list::has_vine_update)
-    return Swap_opt::template Chain_pairing<Master_matrix>::indexToBar_;
-  else
-    return Pair_opt::indexToBar_;
-}
-
-template <class Master_matrix>
-inline constexpr typename Chain_matrix<Master_matrix>::Pos_index& Chain_matrix<Master_matrix>::_nextPosition()
-{
-  if constexpr (Master_matrix::Option_list::has_vine_update)
-    return Swap_opt::template Chain_pairing<Master_matrix>::nextPosition_;
-  else
-    return Pair_opt::nextPosition_;
+    column.emplace(cellID, 1);
 }
 
 }  // namespace persistence_matrix

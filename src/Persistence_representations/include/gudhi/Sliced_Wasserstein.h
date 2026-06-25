@@ -5,6 +5,7 @@
  *    Copyright (C) 2018  Inria
  *
  *    Modification(s):
+ *      - 2026/04 Vincent Rouvreau: Use Gudhi::random
  *      - YYYY/MM Author: Description of the modification
  */
 
@@ -25,6 +26,7 @@
 #include <gudhi/read_persistence_from_file.h>
 #include <gudhi/common_persistence_representations.h>
 #include <gudhi/Debug_utils.h>
+#include <gudhi/random.h>
 
 namespace Gudhi {
 namespace Persistence_representations {
@@ -258,6 +260,7 @@ class Sliced_Wasserstein
 
       // Compute all intra-PD angles with the norms of the corresponding points (for sorting these angles later).
       std::vector<std::pair<double, std::pair<std::pair<int,double>, std::pair<int,double> > > > angles1, angles2;
+
       for (int i = 0; i < num_pts_dgm; i++) {
         for (int j = i + 1; j < num_pts_dgm; j++) {
           double theta1 = compute_angle(diagram1, i, j);

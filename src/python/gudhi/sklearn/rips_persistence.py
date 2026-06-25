@@ -7,22 +7,20 @@
 # Modification(s):
 #   - YYYY/MM Author: Description of the modification
 
-__author__ = "Vincent Rouvreau"
-__maintainer__ = ""
-__copyright__ = "Copyright (C) 2022 Inria"
 __license__ = "MIT"
 
 
 import math
 import numpy as np
-from typing import Union, Iterable, Literal, Optional
+from numpy.typing import ArrayLike
+from typing import Literal, Optional
 from sklearn.base import BaseEstimator, TransformerMixin
 from joblib import Parallel, delayed
 from scipy.sparse import coo_matrix
 from scipy.spatial import cKDTree
 from scipy.spatial.distance import pdist, squareform
 
-from .._ripser import _lower, _full, _sparse, _lower_to_coo, _lower_cone_radius
+from .._ripser_ext import _lower, _full, _sparse, _lower_to_coo, _lower_cone_radius
 from ..flag_filtration.edge_collapse import reduce_graph
 from .. import SimplexTree
 
@@ -44,17 +42,20 @@ from .. import SimplexTree
 
 class RipsPersistence(BaseEstimator, TransformerMixin):
     """
-    This is a class for constructing Vietoris-Rips complexes and computing the persistence diagrams from them.
+    This is a class for constructing Vietoris-Rips filtrations (possibly implicitly) and computing their persistence
+    diagrams.  It does not always use :class:`~gudhi.RipsComplex` or :class:`~gudhi.SimplexTree`, or not naively, it may
+    also use :func:`~gudhi.flag_filtration.edge_collapse.reduce_graph` and a fork of Ripser :cite:`Ripser` and can be
+    significantly faster.
     """
 
     def __init__(
         self,
-        homology_dimensions: Union[int, Iterable[int]],
+        homology_dimensions: int | ArrayLike,
         threshold: float = float("inf"),
         input_type: Literal[
             "point cloud", "full distance matrix", "lower distance matrix", "distance coo_matrix"
         ] = "point cloud",
-        num_collapses: Union[int, Literal["auto"]] = "auto",
+        num_collapses: int | Literal["auto"] = "auto",
         homology_coeff_field: int = 11,
         n_jobs: Optional[int] = None,
     ):
@@ -89,7 +90,7 @@ class RipsPersistence(BaseEstimator, TransformerMixin):
         # Done twice (in __init__ and fit), but exception is better the sooner
         dim_list = np.asarray(self.homology_dimensions, dtype=int)
         if dim_list.ndim not in [0, 1]:
-            raise ValueError(f"Invalid dimension. Got {self.homology_dimensions=}, expected type=int|Iterable[int].")
+            raise ValueError(f"Invalid dimension. Got {self.homology_dimensions=}, expected type=int|ArrayLike[int].")
 
     def fit(self, X, Y=None):
         """
@@ -161,7 +162,10 @@ class RipsPersistence(BaseEstimator, TransformerMixin):
                 input_type = "distance coo_matrix"
 
         if num_collapses > 0:
-            assert input_type == "distance coo_matrix"
+            if input_type != "distance coo_matrix":
+                raise ValueError(
+                    "Input type has to be 'distance coo_matrix' when 'num_collapses' is not 0"
+                )
             inp = reduce_graph(inp, num_collapses)
 
         if use_simplex_tree:
@@ -226,7 +230,9 @@ class RipsPersistence(BaseEstimator, TransformerMixin):
         :rtype: list of numpy ndarray of shape (,2) or list of list of numpy ndarray of shape (,2)
         """
         # threads is preferred as Rips construction and persistence computation releases the GIL
-        res = Parallel(n_jobs=self.n_jobs, prefer="threads")(delayed(self.__transform)(inputs) for inputs in X)
+        res = Parallel(n_jobs=self.n_jobs, prefer="threads")(
+            delayed(self.__transform)(inputs) for inputs in X
+        )
 
         # cf. `fit`
         if self._unwrap:

@@ -5,11 +5,9 @@
 # Copyright (C) 2020 Inria
 #
 # Modification(s):
+#   - 2025/09 Vincent Rouvreau: Move `len` test in fit as it may not be defined until eagerpy modify its format
 #   - YYYY/MM Author: Description of the modification
 
-__author__ = "Marc Glisse"
-__maintainer__ = ""
-__copyright__ = "Copyright (C) 2020 Inria"
 __license__ = "MIT"
 
 
@@ -81,9 +79,13 @@ class KNearestNeighbors:
         elif metric == "minkowski":
             self.params["p"] = kwargs.get("p", 2)
         if self.params.get("implementation") in {"keops", "ckdtree"}:
-            assert self.metric == "minkowski"
+            if self.metric != "minkowski":
+                raise ValueError("metric has to be minkowski for the given parameters")
         if self.params.get("implementation") == "hnsw":
-            assert self.metric == "minkowski" and self.params["p"] == 2
+            if self.metric != "minkowski" or self.params["p"] != 2:
+                raise ValueError(
+                    "metric has to be minkowski and p set to 2 for the given parameters"
+                )
         if not self.params.get("implementation"):
             if self.metric == "minkowski":
                 self.params["implementation"] = "ckdtree"
@@ -100,10 +102,6 @@ class KNearestNeighbors:
         Args:
             X (numpy.array): coordinates for reference points.
         """
-        if self.k > len(X):
-            raise ValueError(
-                f"Expected number of neighbors (aka. 'k') <= number of samples, but k={self.k} and number of samples={len(X)}"
-            )
         self.ref_points = X
         if self.params.get("enable_autodiff", False):
             import eagerpy as ep
@@ -113,6 +111,13 @@ class KNearestNeighbors:
                 # I don't know a clever way to reuse a GPU tensor from tensorflow in pytorch
                 # without copying to/from the CPU.
                 X = X.numpy()
+        # In case of enable_autodiff, `len(X)` may not be defined until `ep.astensor(X)` and/or `X = X.numpy()` above
+        if self.k > len(X):
+            raise ValueError(
+                f"Expected number of neighbors (aka. 'k') <= number of samples, but k={self.k}"
+                f" and number of samples={len(X)}"
+            )
+
         if self.params["implementation"] == "ckdtree":
             # sklearn could handle this, but it is much slower
             from scipy.spatial import cKDTree
@@ -185,7 +190,8 @@ class KNearestNeighbors:
                 self.return_distance = True
                 self.params["enable_autodiff"] = True
             # We can implement more later as needed
-            assert self.metric == "minkowski"
+            if self.metric != "minkowski":
+                raise ValueError("metric has to be minkowski for the given parameters")
             p = self.params["p"]
             Y = ep.astensor(self.ref_points)
             neighbor_pts = Y[neighbors,]
@@ -369,7 +375,9 @@ class KNearestNeighbors:
                 return distances
             return None
 
-        assert self.params["implementation"] == "sklearn"
+        # sklearn is the last valid value possible for "implementation"
+        if self.params["implementation"] != "sklearn":
+            raise ValueError("implementation method has no known value")
         if self.return_distance:
             distances, neighbors = self.nn.kneighbors(X, return_distance=True)
             if self.return_index:

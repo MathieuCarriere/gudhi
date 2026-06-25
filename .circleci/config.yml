@@ -5,7 +5,7 @@ jobs:
   examples:
     docker:
       # cf. https://github.com/GUDHI/gudhi-deploy/blob/main/Dockerfile_for_circleci_image
-      - image: gudhi/ci_for_gudhi:2024.12.01
+      - image: ghcr.io/gudhi/gudhi-deploy/ci_for_gudhi:2026.03.03
     steps:
       - checkout
       - run:
@@ -19,12 +19,13 @@ jobs:
             mkdir build
             cd build
             cmake -DCMAKE_BUILD_TYPE=Release -DWITH_GUDHI_EXAMPLE=ON -DWITH_GUDHI_TEST=OFF -DWITH_GUDHI_UTILITIES=OFF -DWITH_GUDHI_PYTHON=OFF ..
-            make all
+            make -j 2 all
             ctest --output-on-failure
 
   tests:
     docker:
-      - image: gudhi/ci_for_gudhi:2024.12.01
+      - image: ghcr.io/gudhi/gudhi-deploy/ci_for_gudhi:2026.03.03
+    resource_class: large # Sometimes takes a long time to build matrices - Timeout is 1h
     steps:
       - checkout
       - run:
@@ -38,31 +39,12 @@ jobs:
             mkdir build
             cd build
             cmake -DCMAKE_BUILD_TYPE=Release -DWITH_GUDHI_EXAMPLE=OFF -DWITH_GUDHI_TEST=ON -DWITH_GUDHI_UTILITIES=OFF -DWITH_GUDHI_PYTHON=OFF ..
-            make all
-            ctest --output-on-failure
-
-  debug_tests:
-    docker:
-      - image: gudhi/ci_for_gudhi:2024.12.01
-    steps:
-      - checkout
-      - run:
-          name: Checkout submodules
-          command: |
-            git submodule sync
-            git submodule update --init
-      - run:
-          name: Build and test unitary tests
-          command: |
-            mkdir build
-            cd build
-            cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS=-fsanitize=address -DWITH_GUDHI_EXAMPLE=OFF -DWITH_GUDHI_TEST=ON -DWITH_GUDHI_UTILITIES=OFF -DWITH_GUDHI_PYTHON=OFF ..
-            make all
+            make -j 3 all
             ctest --output-on-failure
 
   utils:
     docker:
-      - image: gudhi/ci_for_gudhi:2024.12.01
+      - image: ghcr.io/gudhi/gudhi-deploy/ci_for_gudhi:2026.03.03
     steps:
       - checkout
       - run:
@@ -81,9 +63,12 @@ jobs:
 
   python:
     docker:
-      - image: gudhi/ci_for_gudhi:2024.12.01
+      - image: ghcr.io/gudhi/gudhi-deploy/ci_for_gudhi:2026.03.03
     resource_class: large # Delaunay complex requires about 5 Gb of RAM to compile
     steps:
+      - restore_cache:
+          keys:
+            - scikit_learn_data
       - checkout
       - run:
           name: Checkout submodules
@@ -91,7 +76,7 @@ jobs:
             git submodule sync
             git submodule update --init
       - run:
-          name: Build and test python module. Generates and tests the python documentation
+          name: Build python module and the python documentation
           command: |
             mkdir build
             cd build
@@ -100,24 +85,29 @@ jobs:
             cd version
             cmake -DCMAKE_BUILD_TYPE=Release -DWITH_GUDHI_EXAMPLE=OFF -DWITH_GUDHI_UTILITIES=OFF -DWITH_GUDHI_PYTHON=ON -DWITH_GUDHI_REMOTE_TEST=ON .
             cd python
-            python setup.py build_ext --inplace
-            ctest --output-on-failure
-            make sphinx
+            make -j 2 sphinx
             cp -R sphinx /tmp/sphinx
-            python setup.py install
-            python setup.py clean --all
-            python -B -m pytest test/*.py --cov-report html --cov=gudhi
-            cp -R htmlcov /tmp/htmlcov
       - store_artifacts:
           path: /tmp/sphinx
           destination: sphinx
+      - run:
+          name: Test python module and generate coverage report. Finaly test python examples
+          command: |
+            cd build/version/python
+            python -B -m pytest test/*.py --cov-report html --cov=gudhi
+            cp -R htmlcov /tmp/htmlcov
+            ctest --output-on-failure -E test_
       - store_artifacts:
           path: /tmp/htmlcov
           destination: htmlcov
+      - save_cache:
+          key: scikit_learn_data
+          paths:
+            - ~/scikit_learn_data
 
   doxygen:
     docker:
-      - image: gudhi/doxygen_for_gudhi:2024.12.01
+      - image: ghcr.io/gudhi/gudhi-deploy/doxygen_for_gudhi:2026.03.03
     steps:
       - checkout
       - run:
@@ -147,7 +137,7 @@ jobs:
 
   bibliography:
     docker:
-      - image: gudhi/doxygen_for_gudhi:2024.12.01
+      - image: ghcr.io/gudhi/gudhi-deploy/doxygen_for_gudhi:2026.03.03
     steps:
       - checkout
       - run:
@@ -170,7 +160,7 @@ jobs:
   examples_without_cgal_eigen:
     docker:
       # cf. https://github.com/GUDHI/gudhi-deploy/blob/main/Dockerfile_for_circleci_image_without_cgal
-      - image: gudhi/ci_for_gudhi_wo_cgal:2024.12.01
+      - image: ghcr.io/gudhi/gudhi-deploy/ci_for_gudhi_wo_cgal:2026.03.03
     steps:
       - checkout
       - run:
@@ -184,12 +174,12 @@ jobs:
             mkdir build
             cd build
             cmake -DCMAKE_BUILD_TYPE=Release -DWITH_GUDHI_EXAMPLE=ON -DWITH_GUDHI_TEST=OFF -DWITH_GUDHI_UTILITIES=OFF -DWITH_GUDHI_PYTHON=OFF ..
-            make all
+            make -j 2 all
             ctest --output-on-failure
 
   tests_without_cgal_eigen:
     docker:
-      - image: gudhi/ci_for_gudhi_wo_cgal:2024.12.01
+      - image: ghcr.io/gudhi/gudhi-deploy/ci_for_gudhi_wo_cgal:2026.03.03
     steps:
       - checkout
       - run:
@@ -203,12 +193,12 @@ jobs:
             mkdir build
             cd build
             cmake -DCMAKE_BUILD_TYPE=Release -DWITH_GUDHI_EXAMPLE=OFF -DWITH_GUDHI_TEST=ON -DWITH_GUDHI_UTILITIES=OFF -DWITH_GUDHI_PYTHON=OFF ..
-            make all
+            make -j 2 all
             ctest --output-on-failure
 
   utils_without_cgal_eigen:
     docker:
-      - image: gudhi/ci_for_gudhi_wo_cgal:2024.12.01
+      - image: ghcr.io/gudhi/gudhi-deploy/ci_for_gudhi_wo_cgal:2026.03.03
     steps:
       - checkout
       - run:
@@ -227,7 +217,7 @@ jobs:
 
   python_without_cgal_eigen:
     docker:
-      - image: gudhi/ci_for_gudhi_wo_cgal:2024.12.01
+      - image: ghcr.io/gudhi/gudhi-deploy/ci_for_gudhi_wo_cgal:2026.03.03
     steps:
       - checkout
       - run:
@@ -242,14 +232,14 @@ jobs:
             cd build
             cmake -DCMAKE_BUILD_TYPE=Release -DWITH_GUDHI_EXAMPLE=OFF -DWITH_GUDHI_UTILITIES=OFF -DWITH_GUDHI_PYTHON=ON ..
             cd src/python
-            python setup.py build_ext --inplace
+            make -j 2
             ctest --output-on-failure
 
   ### With all third parties, except CGAL
 
   examples_without_cgal:
     docker:
-      - image: gudhi/ci_for_gudhi_wo_cgal:2024.12.01
+      - image: ghcr.io/gudhi/gudhi-deploy/ci_for_gudhi_wo_cgal:2026.03.03
     steps:
       - checkout
       - run:
@@ -270,12 +260,12 @@ jobs:
             mkdir build
             cd build
             cmake -DCMAKE_BUILD_TYPE=Release -DWITH_GUDHI_EXAMPLE=ON -DWITH_GUDHI_TEST=OFF -DWITH_GUDHI_UTILITIES=OFF -DWITH_GUDHI_PYTHON=OFF ..
-            make all
+            make -j 2 all
             ctest --output-on-failure
 
   tests_without_cgal:
     docker:
-      - image: gudhi/ci_for_gudhi_wo_cgal:2024.12.01
+      - image: ghcr.io/gudhi/gudhi-deploy/ci_for_gudhi_wo_cgal:2026.03.03
     steps:
       - checkout
       - run:
@@ -296,12 +286,12 @@ jobs:
             mkdir build
             cd build
             cmake -DCMAKE_BUILD_TYPE=Release -DWITH_GUDHI_EXAMPLE=OFF -DWITH_GUDHI_TEST=ON -DWITH_GUDHI_UTILITIES=OFF -DWITH_GUDHI_PYTHON=OFF ..
-            make all
+            make -j 2 all
             ctest --output-on-failure
 
   utils_without_cgal:
     docker:
-      - image: gudhi/ci_for_gudhi_wo_cgal:2024.12.01
+      - image: ghcr.io/gudhi/gudhi-deploy/ci_for_gudhi_wo_cgal:2026.03.03
     steps:
       - checkout
       - run:
@@ -327,7 +317,7 @@ jobs:
 
   python_without_cgal:
     docker:
-      - image: gudhi/ci_for_gudhi_wo_cgal:2024.12.01
+      - image: ghcr.io/gudhi/gudhi-deploy/ci_for_gudhi_wo_cgal:2026.03.03
     steps:
       - checkout
       - run:
@@ -349,7 +339,7 @@ jobs:
             cd build
             cmake -DCMAKE_BUILD_TYPE=Release -DWITH_GUDHI_EXAMPLE=OFF -DWITH_GUDHI_UTILITIES=OFF -DWITH_GUDHI_PYTHON=ON ..
             cd src/python
-            python setup.py build_ext --inplace
+            make -j 2
             ctest --output-on-failure
 
 workflows:
@@ -366,7 +356,6 @@ workflows:
       - python_without_cgal
       - examples
       - tests
-      - debug_tests
       - utils
       - python
       - doxygen
